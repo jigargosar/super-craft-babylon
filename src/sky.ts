@@ -59,6 +59,7 @@ export function createSky(scene: Scene) {
     smoothness: GRADIENT_SMOOTHNESS,
     disableLighting: true,
     fogEnabled: false,
+    disableDepthWrite: true, // the dome is a backdrop. Clouds beyond its radius must still show.
   });
   dome.material = gradient;
 

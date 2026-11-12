@@ -5,17 +5,19 @@ State and facts that live nowhere else. Rules are in `CLAUDE.md`.
 ## State
 
 - Built: build steps 1 to 3, the fixed-step loop, Babylon-based input, click-only break and place, the ghost block, the settings and keys panels, the sky with day and night, the dev inspector key.
-- Written and not yet wired into the game: `src/atlas.ts`, plus a `texture` field per row in `src/blocks.ts`.
+- Built from step 4: block textures from the atlas, corner shading, sun and moon shadows, bloom with tone mapping, lamp glow, water ripple, chips on a broken block.
+- Clouds are coded and switched off with `CLOUDS_ON = false` in `src/main.ts`. The layer draws as one solid sheet with no gaps, with a diffuse texture and with an opacity texture alike. Cause not found.
+- The step 4 looks were checked by typecheck and headless screenshots only. Seen there: textures, corner shading, tree shadows, the sky. Not seen there: lamp glow, chips, water ripple, night. Frame cost and shadow bias are not tuned.
+- Run one dev server at a time. Several Vite servers sharing `node_modules/.vite` left one of them serving a broken dependency cache: the sky shader failed to compile and the frame rate fell.
 - Tests: `pnpm test` runs 7 unit tests. `pnpm test:e2e` runs 14 Playwright tests in `e2e/`.
 - Packages beyond the first demo: `@babylonjs/materials`, `@babylonjs/inspector`, `vitest`, `@playwright/test`.
 
 ## Next actions
 
 1. Check that the dev server answers on `http://localhost:5173/`. If not, start it in the background: `timeout 28800 node node_modules/vite/bin/vite.js --port 5173 --strictPort --open`.
-2. Wire `src/atlas.ts` into the mesher in `src/world.ts`: uvs buffer, face axis.
-3. Corner shading in the mesher.
-4. The rest of step 4 in this order: shadows, bloom and glow, then water, clouds, particles.
-5. After each feature: commit, then tell the user what is new to test by hand.
+2. Take the user's verdict on the step 4 looks and tune the constants under "Looks" in `src/main.ts` and at the top of `src/world.ts`.
+3. Steps 5 to 7 from `SPEC.md`.
+4. After each feature: commit, then tell the user what is new to test by hand.
 
 Small spec items still open: `?` toggles the panels, a full shortcut panel, save download and load shortcuts.
 
@@ -48,24 +50,30 @@ Parked: a key menu on `Tab` with `@tanstack/hotkeys`. The checked facts are in `
 - `src/voxel-libs.d.ts`: types for the two voxel libraries.
 - `e2e/game.ts`: Playwright fixture. It fakes pointer lock, writes a fixed-seed save and reads the panels, the save and the meshes.
 
-## Modules ready to wire
+## Looks
 
-`src/atlas.ts`:
-
-- `TILE = 16`, `GRID = 4`, `atlasPixels(): { colour: Uint8Array; glow: Uint8Array }`, `tileUV(block, cu, cv): [number, number]`.
-- Both buffers are 64 x 64 RGBA with row 0 at the bottom. Create with `RawTexture.CreateRGBATexture(pixels, 64, 64, scene, true, false, Texture.NEAREST_NEAREST_MIPLINEAR)`.
-- Block id n sits in tile n - 1. `tileUV` throws for air and for ids above 16.
-- The atlas holds full colour, so vertex colours become tint and corner shading only.
-- Only the lamp tile glows. Glow needs `land.emissiveTexture` plus the colour selector in `RESEARCH.md` item 3.
+- `src/world.ts` owns the land and water materials, the atlas textures, the ripple texture and the mesher with its uvs and corner shading.
+- `src/main.ts` owns the shadow generator, the rendering pipeline, the glow layer, the chip particles and the cloud plane. Their values sit under "Looks" in its constants.
+- `world.hooks.landMesh` runs for each new land mesh. `main.ts` uses it to add shadow casters. `world.land` is the land material, which the glow selector checks.
+- The cloud plane jumps by whole texture repeats of 512 blocks to stay over the player. Only its texture offset drifts.
+- Chips and clouds are unlit, so `main.ts` dims them with the daylight.
 
 ## Verified facts
+
+Atlas, in `src/atlas.ts`:
+
+- `TILE = 16`, `GRID = 4`, `atlasPixels(): { colour: Uint8Array; glow: Uint8Array }`, `tileUV(block, cu, cv): [number, number]`.
+- Both buffers are 64 x 64 RGBA with row 0 at the bottom.
+- Block id n sits in tile n - 1. `tileUV` throws for air and for ids above 16.
+- The atlas holds full colour, so vertex colours carry tint and corner shading only.
+- Only the lamp tile glows.
 
 Sky, in `src/sky.ts`:
 
 - `createSky(scene): { update(dayFraction: number): number; sun: DirectionalLight }`. `update` runs once per frame and returns daylight 0 to 1. `sun` goes to the shadow generator.
 - dayFraction: 0 midnight, 0.25 sunrise, 0.5 noon, 0.75 sunset.
 - It owns the dome, sun, moon, stars, both lights and `scene.fogColor`.
-- The dome is 380 blocks wide. Keep `camera.maxZ` at 200 or more. Fog distance stays in `world.ts`.
+- The dome is 380 blocks wide and writes no depth, so things beyond it still show. `camera.maxZ` is `VIEW_FAR = 1200`. Fog distance stays in `world.ts`.
 
 Rendering:
 
@@ -134,7 +142,6 @@ Headless Chrome:
 ## In the spec but not in the demo
 
 - Ore veins, swim, glass, workbench and ore blocks.
-- Textures. The demo uses flat vertex colours with a per-block tint.
 - Mode toggle key. The demo is creative only.
 - `?` toggling the panels, save download and load shortcuts.
-- Steps 4 to 7.
+- Steps 5 to 7.
