@@ -8,7 +8,7 @@ These apply to every session in this project.
 - Before every tool call, log one line: what it does and which objective it serves.
 - Take small steps. Stop and discuss when something fails or a big decision comes up.
 - Do not ask the user to decide feel questions in the abstract. Make the options switchable in play.
-- Commit only when the user asks. Add files by name. Commit first when a change is large.
+- Commit each finished feature, then tell the user what is new to test by hand. Add files by name.
 - Only the user commits `SPEC.md`.
 - Never delete or move files in a temp folder.
 - Name constants with units. No magic numbers.

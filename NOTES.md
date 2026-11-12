@@ -4,17 +4,18 @@ State and facts that live nowhere else. Rules are in `CLAUDE.md`.
 
 ## State
 
-- Built: build steps 1 to 3, the fixed-step loop, Babylon-based input, click-only break and place, the ghost block, the settings and keys panels.
-- Written and not yet wired into the game: `src/atlas.ts`, `src/sky.ts`, `src/debug.ts`, plus a `texture` field per row in `src/blocks.ts`.
+- Built: build steps 1 to 3, the fixed-step loop, Babylon-based input, click-only break and place, the ghost block, the settings and keys panels, the sky with day and night, the dev inspector key.
+- Written and not yet wired into the game: `src/atlas.ts`, plus a `texture` field per row in `src/blocks.ts`.
 - Tests: `pnpm test` runs 7 unit tests. `pnpm test:e2e` runs 14 Playwright tests in `e2e/`.
 - Packages beyond the first demo: `@babylonjs/materials`, `@babylonjs/inspector`, `vitest`, `@playwright/test`.
 
 ## Next actions
 
 1. Check that the dev server answers on `http://localhost:5173/`. If not, start it in the background: `timeout 28800 node node_modules/vite/bin/vite.js --port 5173 --strictPort --open`.
-2. Wire `src/sky.ts`, `src/debug.ts` and `src/atlas.ts` in `src/main.ts`.
-3. Mesher groundwork in `src/world.ts`: uvs buffer, face axis, corner shading.
-4. Step 4 in this order: atlas, sky and day-night with fog, shadows, bloom and glow, then water, clouds, particles.
+2. Wire `src/atlas.ts` into the mesher in `src/world.ts`: uvs buffer, face axis.
+3. Corner shading in the mesher.
+4. The rest of step 4 in this order: shadows, bloom and glow, then water, clouds, particles.
+5. After each feature: commit, then tell the user what is new to test by hand.
 
 Small spec items still open: `?` toggles the panels, a full shortcut panel, save download and load shortcuts.
 
@@ -23,10 +24,12 @@ Small spec items still open: `?` toggles the panels, a full shortcut panel, save
 - One press is one action. Left breaks, right places. Holding does nothing more.
 - Each `POINTERDOWN` pushes its button onto the `presses` queue. Each world update takes one press.
 - `F` switches Movement between walk and fly. Digits 1 to 9 pick a block. The wheel does nothing. `Shift+N` starts a new world.
+- `T` jumps to the next time of day: night, dawn, day, dusk. Time also runs on its own. A full day is `DAY_SECONDS = 480`. The time is not saved, and a load starts mid morning.
+- `I` toggles the Babylon inspector, on the dev server only.
 - Feel values sit together as constants in `src/main.ts`: `REACH = 6` blocks and `GHOST_ALPHA = 0.35`.
 - Ghost block: a translucent box at the place cell in the selected block's colour. Hidden when the cell would overlap the body.
 - `#debug`, top left, read-only: fps, xyz, biome, chunks, seed.
-- `#settings`, top right: every setting with all its options and the current one in brackets, such as `F  Movement  [WALK] FLY`.
+- `#settings`, top right: every setting with all its options and the current one in brackets, such as `F  Movement  [WALK] FLY` and `T  Time      NIGHT DAWN [DAY] DUSK`.
 - `#keys`, below it: only the keys that work now. `Space jump` and `Shift sprint` when walking, `Space rise` and `Shift sink` when flying. `Click capture mouse` without pointer lock. With lock: `LMB break`, `RMB place` and `Esc release mouse`.
 - On the dev server `globalThis.scene` is the Babylon scene. The e2e tests read the `ghost` and `highlight` meshes through it.
 
@@ -55,18 +58,14 @@ Parked: a key menu on `Tab` with `@tanstack/hotkeys`. The checked facts are in `
 - The atlas holds full colour, so vertex colours become tint and corner shading only.
 - Only the lamp tile glows. Glow needs `land.emissiveTexture` plus the colour selector in `RESEARCH.md` item 3.
 
-`src/sky.ts`:
-
-- `createSky(scene): { update(dayFraction: number): number; sun: DirectionalLight }`. `update` returns daylight 0 to 1. `sun` goes to the shadow generator.
-- dayFraction: 0 midnight, 0.25 sunrise, 0.5 noon, 0.75 sunset.
-- It creates both lights and sets `scene.fogColor`. Wiring means deleting the two lights, the `sky` colour and the `scene.fogColor` line from `main.ts`, then calling `update` once per frame.
-- The dome is 380 blocks wide. Keep `camera.maxZ` at 200 or more. Fog distance stays in `world.ts`.
-
-`src/debug.ts`:
-
-- `toggleInspector(scene): Promise<void>`. Does nothing outside dev mode. A key still has to be bound.
-
 ## Verified facts
+
+Sky, in `src/sky.ts`:
+
+- `createSky(scene): { update(dayFraction: number): number; sun: DirectionalLight }`. `update` runs once per frame and returns daylight 0 to 1. `sun` goes to the shadow generator.
+- dayFraction: 0 midnight, 0.25 sunrise, 0.5 noon, 0.75 sunset.
+- It owns the dome, sun, moon, stars, both lights and `scene.fogColor`.
+- The dome is 380 blocks wide. Keep `camera.maxZ` at 200 or more. Fog distance stays in `world.ts`.
 
 Rendering:
 

@@ -2,10 +2,8 @@ import "./style.css";
 import {
   Color3,
   Color4,
-  DirectionalLight,
   Engine,
   FreeCamera,
-  HemisphericLight,
   KeyboardEventTypes,
   MeshBuilder,
   PointerEventTypes,
@@ -17,6 +15,8 @@ import raycast from "fast-voxel-raycast";
 import { del, get, set } from "idb-keyval";
 import sweep from "voxel-aabb-sweep";
 import { B, BLOCKS, HOTBAR, solid } from "./blocks";
+import { toggleInspector } from "./debug";
+import { createSky } from "./sky";
 import { createWorld, type Edits } from "./world";
 
 type Save = { seed: string; edits: Edits; feet: number[]; look: number[]; fly: boolean; slot: number };
@@ -25,6 +25,11 @@ type Save = { seed: string; edits: Edits; feet: number[]; look: number[]; fly: b
 const STEP = 1 / 60; // seconds per world update
 const MAX_STEPS = Math.round(0.25 / STEP); // world updates one drawn frame may catch up on
 const SAVE_EVERY = 2000; // milliseconds
+
+// Day and night. A day fraction of 0 is midnight, 0.25 sunrise, 0.5 noon, 0.75 sunset.
+const DAY_SECONDS = 480; // one full day and night
+const START_DAY_FRACTION = 0.4; // mid morning
+const TIMES = ["NIGHT", "DAWN", "DAY", "DUSK"]; // quarter days, centred on midnight, sunrise, noon and sunset
 
 // Body, in blocks.
 const HALF = 0.3; // half width
@@ -66,16 +71,11 @@ const engine = new Engine(canvas, true);
 const scene = new Scene(engine);
 // Dev only. The Playwright tests read meshes through this handle.
 if (import.meta.env.DEV) Object.assign(globalThis, { scene });
-const sky = Color3.FromHexString("#a9d4f5");
-scene.clearColor = sky.toColor4();
 scene.fogMode = Scene.FOGMODE_LINEAR;
-scene.fogColor = sky;
 scene.skipPointerMovePicking = scene.skipPointerDownPicking = scene.skipPointerUpPicking = true;
 
-const ambient = new HemisphericLight("ambient", Vector3.Up(), scene);
-ambient.intensity = 0.6;
-ambient.groundColor = new Color3(0.5, 0.5, 0.55);
-new DirectionalLight("sun", new Vector3(-0.5, -1, -0.3), scene).intensity = 0.45;
+// The sky owns the dome, sun, moon, stars, both lights and the fog colour.
+const sky = createSky(scene);
 
 const world = createWorld(scene, seed, edits);
 const blocked = (x: number, y: number, z: number) => solid(world.get(x, y, z));
@@ -130,6 +130,8 @@ const presses: number[] = []; // mouse buttons pressed and not yet acted on, old
 let canPlace = false;
 let fly = saved?.fly ?? false;
 let slot = saved?.slot ?? 0;
+let dayFraction = START_DAY_FRACTION;
+let shownTime = -1; // index into TIMES that the settings panel shows
 let lag = 0;
 let velocityY = 0;
 let grounded = false;
@@ -153,6 +155,9 @@ function select(next: number) {
 }
 select(slot);
 
+// Which quarter of the day it is, as an index into TIMES.
+const timeIndex = () => Math.floor(((dayFraction + 0.5 / TIMES.length) % 1) * TIMES.length);
+
 // Text helpers for the monospace panels.
 const table = (rows: string[][]) =>
   rows
@@ -165,10 +170,15 @@ const marked = (all: readonly string[], current: string) =>
 // A setting lists all its options with the current one in brackets. Its key steps to the next option.
 function showPanels() {
   const locked = document.pointerLockElement === canvas;
-  const settingRows = [["F", "Movement", marked(["WALK", "FLY"], fly ? "FLY" : "WALK")]];
+  shownTime = timeIndex();
+  const settingRows = [
+    ["F", "Movement", marked(["WALK", "FLY"], fly ? "FLY" : "WALK")],
+    ["T", "Time", marked(TIMES, TIMES[shownTime])],
+  ];
   const moveRows = fly ? [["Space", "rise"], ["Shift", "sink"]] : [["Space", "jump"], ["Shift", "sprint"]];
   const mouseRows = locked ? [["LMB", "break"], ["RMB", "place"], ["Esc", "release mouse"]] : [["Click", "capture mouse"]];
-  const keyRows = [["W A S D", "move"], ...moveRows, ...mouseRows, ["1-9", "pick block"], ["Shift+N", "new world"]];
+  const devRows = import.meta.env.DEV ? [["I", "inspector"]] : [];
+  const keyRows = [["W A S D", "move"], ...moveRows, ...mouseRows, ["1-9", "pick block"], ["Shift+N", "new world"], ...devRows];
   settingsPanel.textContent = `SETTINGS\n${table(settingRows)}`;
   keysPanel.textContent = `KEYS\n${table(keyRows)}`;
 }
@@ -186,6 +196,8 @@ scene.onKeyboardObservable.add(({ type, event }) => {
   if (keys.has(event.code)) return;
   keys.add(event.code);
   if (event.code === "KeyF") fly = !fly;
+  if (event.code === "KeyT") dayFraction = ((timeIndex() + 1) % TIMES.length) / TIMES.length;
+  if (event.code === "KeyI") void toggleInspector(scene);
   if (/^Digit[1-9]$/.test(event.code)) select(Number(event.code[5]) - 1);
   if (event.code === "KeyN" && event.shiftKey) {
     clearInterval(autosave);
@@ -268,6 +280,7 @@ function tick() {
   if (world.ready(before[0], before[2])) move();
   aim();
   act();
+  dayFraction = (dayFraction + STEP / DAY_SECONDS) % 1;
 }
 
 // One drawn frame. Runs as many world updates as real time calls for, then blends the camera between the last two.
@@ -276,6 +289,8 @@ scene.onBeforeRenderObservable.add(() => {
   lag = Math.min(lag + engine.getDeltaTime() / 1000, MAX_STEPS * STEP);
   if (lag >= STEP) world.stream(body.base[0], body.base[2]);
   for (; lag >= STEP; lag -= STEP) tick();
+  sky.update(dayFraction);
+  if (timeIndex() !== shownTime) showPanels();
   const now = feet();
   Vector3.LerpToRef(Vector3.FromArray(before), Vector3.FromArray(now), lag / STEP, camera.position);
   camera.position.y += EYE;
