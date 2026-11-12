@@ -12,18 +12,10 @@
       <div class="size-1.5 rounded-full bg-white mix-blend-difference"></div>
     </div>
     <pre id="debug" class="pointer-events-none fixed top-2 left-2 rounded bg-black/40 px-2 py-1"></pre>
-    <pre class="pointer-events-none fixed top-2 right-2 rounded bg-black/40 px-2 py-1">
-click        capture mouse
-WASD         move
-Space        jump / fly up
-Shift        sprint / fly down
-F            toggle fly
-left mouse   break
-right mouse  place
-1-9, wheel   pick block
-Shift+N      new world
-` then B P R tuning</pre>
-    <pre id="tune" hidden class="pointer-events-none fixed bottom-24 left-1/2 -translate-x-1/2 rounded bg-black/40 px-2 py-1"></pre>
+    <div class="pointer-events-none fixed top-2 right-2 flex flex-col gap-2">
+      <pre id="settings" class="rounded bg-black/40 px-2 py-1"></pre>
+      <pre id="keys" class="rounded bg-black/40 px-2 py-1"></pre>
+    </div>
     <div id="hotbar" class="pointer-events-none fixed bottom-4 left-1/2 flex -translate-x-1/2 gap-2"></div>
     <script type="module" src="/src/main.ts"></script>
   </body>

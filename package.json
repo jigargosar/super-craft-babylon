@@ -27,7 +27,6 @@
     "alea": "^1.0.1",
     "fast-voxel-raycast": "^0.1.1",
     "idb-keyval": "^6.3.0",
-    "normalize-wheel-es": "^1.2.0",
     "simplex-noise": "^4.0.3",
     "voxel-aabb-sweep": "^0.5.0"
   }

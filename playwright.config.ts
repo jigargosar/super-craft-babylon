@@ -1,24 +1,21 @@
 import { defineConfig } from "@playwright/test";
 
-const PORT = 5199; // the tests' own dev server. Port 5173 belongs to the tab the user watches.
+// The one dev server everyone shares. The executor session starts it. See CLAUDE.md.
+const BASE_URL = "http://localhost:5173";
 const TEST_TIMEOUT_MS = 90_000;
-const SERVER_START_MS = 60_000;
+// One browser at a time. Software rendering is slow, and hold-to-repeat tests count actions per second.
+const WORKERS = 1;
 
 export default defineConfig({
   testDir: "e2e",
   timeout: TEST_TIMEOUT_MS,
+  workers: WORKERS,
   reporter: "list",
   use: {
-    baseURL: `http://localhost:${PORT}`,
+    baseURL: BASE_URL,
     channel: "chrome", // the installed Chrome, no browser download
     headless: true,
     viewport: { width: 1280, height: 720 },
     launchOptions: { args: ["--enable-unsafe-swiftshader"] },
-  },
-  webServer: {
-    command: `node node_modules/vite/bin/vite.js --port ${PORT} --strictPort`,
-    port: PORT,
-    reuseExistingServer: false,
-    timeout: SERVER_START_MS,
   },
 });

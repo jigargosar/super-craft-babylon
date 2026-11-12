@@ -1,31 +1,39 @@
 # Working notes
 
-State and facts that live nowhere else. Rules and session roles are in `CLAUDE.md`.
+State and facts that live nowhere else. Rules are in `CLAUDE.md`.
 
 ## State
 
-- Committed: build steps 1 to 3, the fixed-step loop, Babylon-based input, step 4 research.
-- Uncommitted: leader-key tuning and ghost block in `src/main.ts` and `index.html`. No scripted test has run. The user is testing by hand.
-- Written by the researcher and not yet wired into the game: `src/atlas.ts`, `src/sky.ts`, `src/debug.ts`, plus a `texture` field per row in `src/blocks.ts`.
-- Tests exist: `pnpm test` for unit tests, `pnpm test:e2e` for Playwright. The tester owns them and is adding tests for the leader key and ghost block.
-- New packages: `@babylonjs/materials`, `@babylonjs/inspector`, `vitest`, `@playwright/test`.
-- Step 4 on the executor's side has no go yet.
+- Built: build steps 1 to 3, the fixed-step loop, Babylon-based input, click-only break and place, the ghost block, the settings and keys panels.
+- Written and not yet wired into the game: `src/atlas.ts`, `src/sky.ts`, `src/debug.ts`, plus a `texture` field per row in `src/blocks.ts`.
+- Tests: `pnpm test` runs 7 unit tests. `pnpm test:e2e` runs 14 Playwright tests in `e2e/`.
+- Packages beyond the first demo: `@babylonjs/materials`, `@babylonjs/inspector`, `vitest`, `@playwright/test`.
 
-## Next actions for the executor
+## Next actions
 
 1. Check that the dev server answers on `http://localhost:5173/`. If not, start it in the background: `timeout 28800 node node_modules/vite/bin/vite.js --port 5173 --strictPort --open`.
-2. Get the user's verdict on the tuning keys and ghost block. Fix or commit as they say.
-3. Collect reports from the researcher and the tester.
-4. Wire the researcher's modules in `src/main.ts`.
-5. Mesher groundwork in `src/world.ts`: uvs buffer, face axis, corner shading.
-6. With the user's go, step 4 in this order: atlas, sky and day-night with fog, shadows, bloom and glow, then water, clouds, particles.
+2. Wire `src/sky.ts`, `src/debug.ts` and `src/atlas.ts` in `src/main.ts`.
+3. Mesher groundwork in `src/world.ts`: uvs buffer, face axis, corner shading.
+4. Step 4 in this order: atlas, sky and day-night with fog, shadows, bloom and glow, then water, clouds, particles.
 
 Small spec items still open: `?` toggles the panels, a full shortcut panel, save download and load shortcuts.
 
+## Controls and panels
+
+- One press is one action. Left breaks, right places. Holding does nothing more.
+- Each `POINTERDOWN` pushes its button onto the `presses` queue. Each world update takes one press.
+- `F` switches Movement between walk and fly. Digits 1 to 9 pick a block. The wheel does nothing. `Shift+N` starts a new world.
+- Feel values sit together as constants in `src/main.ts`: `REACH = 6` blocks and `GHOST_ALPHA = 0.35`.
+- Ghost block: a translucent box at the place cell in the selected block's colour. Hidden when the cell would overlap the body.
+- `#debug`, top left, read-only: fps, xyz, biome, chunks, seed.
+- `#settings`, top right: every setting with all its options and the current one in brackets, such as `F  Movement  [WALK] FLY`.
+- `#keys`, below it: only the keys that work now. `Space jump` and `Shift sprint` when walking, `Space rise` and `Shift sink` when flying. `Click capture mouse` without pointer lock. With lock: `LMB break`, `RMB place` and `Esc release mouse`.
+- On the dev server `globalThis.scene` is the Babylon scene. The e2e tests read the `ghost` and `highlight` meshes through it.
+
+Parked: a key menu on `Tab` with `@tanstack/hotkeys`. The checked facts are in `RESEARCH.md`, section "HUD: key menu, visible state, names".
+
 ## Agreements not in CLAUDE.md
 
-- Spec first, quick review, then the user says go.
-- `tinykeys` stays a candidate for the shortcut table. Keep ruled-out options in mind.
 - Old temp test scripts are in `C:/Users/jigar/AppData/Local/Temp/sc-loop/`. `$TEMP` in the tool shell is `C:/Windows/TEMP`. The user rejected making a second folder there.
 
 ## Code map
@@ -35,8 +43,9 @@ Small spec items still open: `?` toggles the panels, a full shortcut panel, save
 - `src/world.ts`: chunk map, mesher, `get`, `set`, `stream`, `ready`. Owns view radius and fog distance.
 - `src/main.ts`: engine, scene, camera, player body, input, HUD, autosave, loop.
 - `src/voxel-libs.d.ts`: types for the two voxel libraries.
+- `e2e/game.ts`: Playwright fixture. It fakes pointer lock, writes a fixed-seed save and reads the panels, the save and the meshes.
 
-## Researcher's modules, ready to wire
+## Modules ready to wire
 
 `src/atlas.ts`:
 
@@ -55,7 +64,7 @@ Small spec items still open: `?` toggles the panels, a full shortcut panel, save
 
 `src/debug.ts`:
 
-- `toggleInspector(scene): Promise<void>`. Does nothing outside dev mode. The executor binds a key.
+- `toggleInspector(scene): Promise<void>`. Does nothing outside dev mode. A key still has to be bound.
 
 ## Verified facts
 
@@ -70,12 +79,20 @@ Rendering:
 Input, all through Babylon observables:
 
 - `scene.onKeyboardObservable` gives `event.code`. Keys attach to the canvas, so `canvas.focus()` runs at start.
-- `scene.onPointerObservable` fires `POINTERDOWN` and `POINTERUP` per button, also for a second button during a hold. `event.buttons` on release says what is still held.
-- `POINTERWHEEL` fires once per axis. `event.inputIndex` says which axis.
-- Babylon's blur events carry no `code`. Held keys and buttons are cleared in `engine.onCanvasBlurObservable`.
+- It forwards auto-repeat key-downs. `event.repeat` is false on the first and true after. The `keys.has(code)` guard gives one action per press.
+- Babylon's blur events carry no `code`. Held keys and queued presses are cleared in `engine.onCanvasBlurObservable`.
 - `scene.preventDefaultOnPointerDown` cancels `mousedown` on the canvas, so raw `mousedown` listeners never fire.
-- `normalize-wheel-es`: `spinY` jumps a full notch on small steps. Use `pixelY`, one slot per `NOTCH` of 100 pixels.
 - Camera: `inertia = 0`, `angularSensibility = 500`, built-in keyboard input removed. Mouse look stays per frame.
+
+Clicks, run in headless Chrome without pointer lock unless marked:
+
+- One `POINTERDOWN` per physical press, for left and right. A second button during a hold also gives exactly one, arriving from a DOM `pointermove`. Zero-gap clicks give one each.
+- `POINTERTAP` is a worse fit. It fires on release, every second fast click becomes `POINTERDOUBLETAP`, and a blur with a button down produces one.
+- `skipPointerDownPicking` only empties the pick. `POINTERDOWN` still fires. Read from source.
+- A canvas blur gives no `POINTERDOWN`. Babylon sends `POINTERUP` for held buttons and ignores the real release.
+- Phantom press: hold left, press right, blur the canvas, release right. That release arrives as `POINTERDOWN` for button 2, without the right flag in `event.buttons`. Every real press has its flag set. `main.ts` queues a press only with the flag.
+- Babylon has no `pointerlockchange` listener, so losing the lock creates no pointer event. Read from source.
+- Not checked: Safari, real pointer lock, and Chrome's refusal of `requestPointerLock()` shortly after `Esc`.
 
 Loop:
 
@@ -110,24 +127,10 @@ Saving:
 - Shape: `{ seed, edits: Map<chunkKey, Map<cellIndex, blockId>>, feet, look, fly, slot }`.
 - Autosave every 2 s. Shift+N deletes the save and reloads.
 
-## Tuning and ghost block
+Headless Chrome:
 
-- Leader key is backquote. The next key picks a setting: `B` break mode, `P` place mode, `R` reach. Any other key closes the panel and is consumed.
-- Break and place each switch between one per click and repeat on hold.
-- Reach cycles through 4, 6, 8 and 10 blocks.
-- The `#tune` panel shows the values while the leader is pending and briefly after a change.
-- Ghost block: a translucent box at the place cell in the selected block's colour. Hidden when the cell would overlap the body.
-- Settings are not saved.
-- Unconfirmed reading of the user's words: "one tick" is one per click, "smooth tick" is repeat on hold, "subtle visual" is the panel.
-- With repeat on, right hold stacks blocks toward the player and stops at the body.
-
-## Test method
-
-- Headless Chrome grants no pointer lock. An init script fakes it: override `Document.prototype.pointerLockElement`, replace `Element.prototype.requestPointerLock`, dispatch `pointerlockchange`.
-- Fixed seed: open the page, write `{ seed: "6b0h3zeb", edits: new Map(), look: [0, 0], fly: false, slot: 0 }` to the save, reload.
-- Read state from the `#debug` panel text and from IndexedDB. A `Map` does not survive `page.evaluate`, so reduce it to arrays inside the page.
-- Slow machine: CPU throttling.
-- Not testable in headless: a 144 Hz display, a real smooth wheel, real pointer lock.
+- It grants no pointer lock, and the bundled Chromium is not installed. The tests use the installed Chrome through `channel: "chrome"`.
+- Not testable there: a 144 Hz display, a real smooth wheel, real pointer lock.
 
 ## In the spec but not in the demo
 

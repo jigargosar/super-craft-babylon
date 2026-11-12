@@ -9,15 +9,12 @@ import {
   KeyboardEventTypes,
   MeshBuilder,
   PointerEventTypes,
-  PointerInput,
   Scene,
   StandardMaterial,
   Vector3,
-  type IWheelEvent,
 } from "@babylonjs/core";
 import raycast from "fast-voxel-raycast";
 import { del, get, set } from "idb-keyval";
-import normalizeWheel from "normalize-wheel-es";
 import sweep from "voxel-aabb-sweep";
 import { B, BLOCKS, HOTBAR, solid } from "./blocks";
 import { createWorld, type Edits } from "./world";
@@ -27,14 +24,16 @@ type Save = { seed: string; edits: Edits; feet: number[]; look: number[]; fly: b
 // Time. The world updates in fixed steps, whatever the display rate.
 const STEP = 1 / 60; // seconds per world update
 const MAX_STEPS = Math.round(0.25 / STEP); // world updates one drawn frame may catch up on
-const REPEAT = Math.round(0.18 / STEP); // world updates between repeated break or place
 const SAVE_EVERY = 2000; // milliseconds
 
 // Body, in blocks.
 const HALF = 0.3; // half width
 const TALL = 1.8;
 const EYE = 1.62; // eye height above the feet
-const REACHES = [4, 6, 8, 10]; // how far the player can break and place
+
+// Feel. Fixed here in code. No key or panel changes these, so edit them here if play calls for it.
+const REACH = 6; // blocks, how far the player can break and place
+const GHOST_ALPHA = 0.35; // opacity of the place preview, 0 to 1
 
 // Motion, in blocks per second.
 const WALK = 4.5;
@@ -47,10 +46,11 @@ const GRAVITY = 30; // blocks per second squared
 
 // Input.
 const LOOK = 500; // mouse pixels per radian
-const NOTCH = 100; // wheel pixels per hotbar slot
-const LEADER = "Backquote"; // press it, then a tuning key
-const TUNE_SHOWN = 1500; // milliseconds the tuning panel stays after a change
-const GHOST_ALPHA = 0.35;
+// The number in `event.button` for a mouse button, to its flag in `event.buttons`.
+const BUTTON_BIT = new Map([
+  [0, 1], // left
+  [2, 2], // right
+]);
 
 const saved = await get<Save>("world");
 const seed = saved?.seed ?? Math.random().toString(36).slice(2, 10);
@@ -59,10 +59,13 @@ const edits: Edits = saved?.edits ?? new Map();
 const canvas = document.querySelector<HTMLCanvasElement>("#game")!;
 const debug = document.querySelector("#debug")!;
 const hotbar = document.querySelector("#hotbar")!;
-const tune = document.querySelector<HTMLElement>("#tune")!;
+const settingsPanel = document.querySelector("#settings")!;
+const keysPanel = document.querySelector("#keys")!;
 
 const engine = new Engine(canvas, true);
 const scene = new Scene(engine);
+// Dev only. The Playwright tests read meshes through this handle.
+if (import.meta.env.DEV) Object.assign(globalThis, { scene });
 const sky = Color3.FromHexString("#a9d4f5");
 scene.clearColor = sky.toColor4();
 scene.fogMode = Scene.FOGMODE_LINEAR;
@@ -122,24 +125,11 @@ const ghost = MeshBuilder.CreateBox("ghost", { size: 1 }, scene);
 ghost.material = ghostMaterial;
 ghost.isPickable = false;
 
-// Feel settings, switched in play with the leader key so choices are made by playing.
-const tuning = { breakRepeats: true, placeRepeats: true, reach: REACHES[1] };
-const tuningKeys: Record<string, () => void> = {
-  KeyB: () => (tuning.breakRepeats = !tuning.breakRepeats),
-  KeyP: () => (tuning.placeRepeats = !tuning.placeRepeats),
-  KeyR: () => (tuning.reach = REACHES[(REACHES.indexOf(tuning.reach) + 1) % REACHES.length]),
-};
-
 const keys = new Set<string>();
-let leading = false;
-let tuneTimer = 0;
+const presses: number[] = []; // mouse buttons pressed and not yet acted on, oldest first
 let canPlace = false;
 let fly = saved?.fly ?? false;
 let slot = saved?.slot ?? 0;
-let held = -1;
-let ticks = 0;
-let nextAct = 0;
-let spin = 0;
 let lag = 0;
 let velocityY = 0;
 let grounded = false;
@@ -163,18 +153,27 @@ function select(next: number) {
 }
 select(slot);
 
-// Shows the tuning keys and their current values. Stays while the leader is pending, then fades out.
-function showTuning(pending: boolean) {
-  const mode = (repeats: boolean) => (repeats ? "repeat on hold" : "one per click");
-  tune.textContent = [
-    `B  break  ${mode(tuning.breakRepeats)}`,
-    `P  place  ${mode(tuning.placeRepeats)}`,
-    `R  reach  ${tuning.reach} blocks`,
-  ].join("\n");
-  tune.hidden = false;
-  clearTimeout(tuneTimer);
-  if (!pending) tuneTimer = setTimeout(() => (tune.hidden = true), TUNE_SHOWN);
+// Text helpers for the monospace panels.
+const table = (rows: string[][]) =>
+  rows
+    .map((row) => row.map((cell, i) => cell.padEnd(Math.max(...rows.map((r) => r[i].length)))).join("  ").trimEnd())
+    .join("\n");
+const marked = (all: readonly string[], current: string) =>
+  all.map((option) => (option === current ? `[${option}]` : option)).join(" ");
+
+// The right side always shows what can be changed and which keys work right now.
+// A setting lists all its options with the current one in brackets. Its key steps to the next option.
+function showPanels() {
+  const locked = document.pointerLockElement === canvas;
+  const settingRows = [["F", "Movement", marked(["WALK", "FLY"], fly ? "FLY" : "WALK")]];
+  const moveRows = fly ? [["Space", "rise"], ["Shift", "sink"]] : [["Space", "jump"], ["Shift", "sprint"]];
+  const mouseRows = locked ? [["LMB", "break"], ["RMB", "place"], ["Esc", "release mouse"]] : [["Click", "capture mouse"]];
+  const keyRows = [["W A S D", "move"], ...moveRows, ...mouseRows, ["1-9", "pick block"], ["Shift+N", "new world"]];
+  settingsPanel.textContent = `SETTINGS\n${table(settingRows)}`;
+  keysPanel.textContent = `KEYS\n${table(keyRows)}`;
 }
+showPanels();
+document.addEventListener("pointerlockchange", showPanels);
 
 const autosave = setInterval(() => {
   const save: Save = { seed, edits, feet: feet(), look: [camera.rotation.x, camera.rotation.y], fly, slot };
@@ -186,43 +185,27 @@ scene.onKeyboardObservable.add(({ type, event }) => {
   if (type === KeyboardEventTypes.KEYUP) return void keys.delete(event.code);
   if (keys.has(event.code)) return;
   keys.add(event.code);
-  if (leading || event.code === LEADER) {
-    if (leading) tuningKeys[event.code]?.();
-    leading = !leading;
-    return showTuning(leading);
-  }
   if (event.code === "KeyF") fly = !fly;
   if (/^Digit[1-9]$/.test(event.code)) select(Number(event.code[5]) - 1);
   if (event.code === "KeyN" && event.shiftKey) {
     clearInterval(autosave);
     void del("world").then(() => location.reload());
   }
+  showPanels();
 });
 
 scene.onPointerObservable.add(({ type, event }) => {
-  if (type === PointerEventTypes.POINTERWHEEL) scroll(event as IWheelEvent);
-  if (type === PointerEventTypes.POINTERUP) held = event.buttons & 1 ? 0 : event.buttons & 2 ? 2 : -1;
   if (type !== PointerEventTypes.POINTERDOWN) return;
   if (document.pointerLockElement !== canvas) return void canvas.requestPointerLock();
-  held = event.button;
-  nextAct = 0;
+  // After a blur during a two-button hold, Babylon reports the release as a press. A real press has its flag set.
+  if (event.buttons & (BUTTON_BIT.get(event.button) ?? 0)) presses.push(event.button);
 });
 
 // Babylon's blur events carry no key code, so held input is dropped here.
 engine.onCanvasBlurObservable.add(() => {
   keys.clear();
-  held = -1;
+  presses.length = 0;
 });
-
-// One hotbar slot per wheel notch. Small steps from smooth wheels and trackpads add up to a notch.
-function scroll(event: IWheelEvent) {
-  const { pixelX, pixelY } = normalizeWheel(event as unknown as WheelEvent);
-  if (event.inputIndex === PointerInput.MouseWheelY) spin += pixelY;
-  if (event.inputIndex === PointerInput.MouseWheelX) spin += pixelX;
-  const notches = Math.trunc(spin / NOTCH);
-  spin -= notches * NOTCH;
-  if (notches) select((((slot + notches) % HOTBAR.length) + HOTBAR.length) % HOTBAR.length);
-}
 
 addEventListener("resize", () => engine.resize());
 canvas.addEventListener("contextmenu", (e) => e.preventDefault());
@@ -256,7 +239,7 @@ function aim() {
   const normal: number[] = [];
   const [x, y, z] = feet();
   const direction = camera.getDirection(Vector3.Forward()).asArray();
-  const hit = raycast(blocked, [x, y + EYE, z], direction, tuning.reach, point, normal);
+  const hit = raycast(blocked, [x, y + EYE, z], direction, REACH, point, normal);
   target = hit ? point.map((p, i) => Math.floor(p - normal[i] / 2)) : null;
   canPlace = false;
   if (target) {
@@ -269,12 +252,14 @@ function aim() {
   ghost.setEnabled(canPlace);
 }
 
+// One press, one action. Holding a button does nothing more.
+// A press waits in the queue until the next world update, even when the release came first.
+// One press is taken per update, so the aim is fresh for each.
 function act() {
-  if (held < 0 || !target || ticks < nextAct) return;
-  const repeats = held === 0 ? tuning.breakRepeats : tuning.placeRepeats;
-  nextAct = repeats ? ticks + REPEAT : Infinity;
-  if (held === 0) world.set(target, B.air);
-  if (held === 2 && canPlace) world.set(place, HOTBAR[slot]);
+  const button = presses.shift();
+  if (button === undefined || !target) return;
+  if (button === 0) world.set(target, B.air);
+  if (button === 2 && canPlace) world.set(place, HOTBAR[slot]);
 }
 
 // One world update. Runs at a fixed rate.
@@ -283,7 +268,6 @@ function tick() {
   if (world.ready(before[0], before[2])) move();
   aim();
   act();
-  ticks++;
 }
 
 // One drawn frame. Runs as many world updates as real time calls for, then blends the camera between the last two.
@@ -301,7 +285,6 @@ scene.onBeforeRenderObservable.add(() => {
     `xyz ${cell.join(" ")}`,
     world.column(cell[0], cell[2]).biome,
     `${world.size()} chunks`,
-    fly ? "fly" : "walk",
     `seed ${seed}`,
   ].join("\n");
 });
