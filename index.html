@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Super Craft</title>
+    <link rel="icon" href="data:," />
+  </head>
+  <body class="overflow-hidden bg-black font-mono text-xs text-white select-none">
+    <canvas id="game" class="block h-screen w-screen outline-none"></canvas>
+    <div class="pointer-events-none fixed inset-0 grid place-items-center">
+      <div class="size-1.5 rounded-full bg-white mix-blend-difference"></div>
+    </div>
+    <pre id="debug" class="pointer-events-none fixed top-2 left-2 rounded bg-black/40 px-2 py-1"></pre>
+    <pre class="pointer-events-none fixed top-2 right-2 rounded bg-black/40 px-2 py-1">
+click        capture mouse
+WASD         move
+Space        jump / fly up
+Shift        sprint / fly down
+F            toggle fly
+left mouse   break
+right mouse  place
+1-9, wheel   pick block
+Shift+N      new world</pre>
+    <div id="hotbar" class="pointer-events-none fixed bottom-4 left-1/2 flex -translate-x-1/2 gap-2"></div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
