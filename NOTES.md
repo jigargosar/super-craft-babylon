@@ -6,7 +6,8 @@ Things learned while building the demo that live nowhere else. Written 2026-11-1
 
 - Build-order steps 1 to 3 are built and committed.
 - `SPEC.md` holds uncommitted edits made on request. Only the user commits the spec.
-- Input fixes are proposed and not applied. See "Open input issues".
+- The fixed-step loop and Babylon-based input are applied in `src/main.ts`, tested, and uncommitted. See "Loop and input".
+- Step 4 research is done by the `researcher` session and saved in `RESEARCH.md`, uncommitted. No snippet in it was run.
 
 ## Working agreements
 
@@ -15,6 +16,9 @@ Things learned while building the demo that live nowhere else. Written 2026-11-1
 - The user runs `pnpm dev` and watches it reload. Tests from this side use other ports.
 - Project setup was done by hand, without skills, on request.
 - Add files to git by name. Commit only when asked.
+- No magic numbers. Name constants with units and derive step values from `STEP`.
+- Test scratch files live in the Windows temp folder from `$TEMP`. Never delete or move them. Windows cleans up.
+- Research and test work may go to other sessions, by judgement. A `researcher` session exists. It should use Context7 first, verify in installed source, and report each item in a short message as it finishes.
 
 ## Code map
 
@@ -26,7 +30,7 @@ Things learned while building the demo that live nowhere else. Written 2026-11-1
 
 ## Versions installed
 
-Babylon.js 9.35.0, Vite 8.3.8, TypeScript 7.0.2, Tailwind 4.3.5, simplex-noise 4.0.3, alea 1.0.1, idb-keyval 6.3.0, voxel-aabb-sweep 0.5.0, fast-voxel-raycast 0.1.1, pnpm 12.
+Babylon.js 9.35.0, Vite 8.3.8, TypeScript 7.0.2, Tailwind 4.3.5, simplex-noise 4.0.3, alea 1.0.1, idb-keyval 6.3.0, voxel-aabb-sweep 0.5.0, fast-voxel-raycast 0.1.1, normalize-wheel-es 1.2.0, pnpm 12.
 
 ## Verified facts
 
@@ -37,7 +41,7 @@ Babylon:
 - Front faces: the outward normal equals minus the cross product of (v1-v0) and (v2-v0). The mesher's corner order follows this and renders correctly.
 - Vertex colours work on `StandardMaterial` with no extra flag.
 - A box with an alpha 0 material and `enableEdgesRendering()` gives a clean target outline.
-- Camera feel: `inertia = 0` with `angularSensibility = 500`. The built-in keyboard input is removed. Movement is custom.
+- Camera feel: `inertia = 0` with `angularSensibility = 500`. The built-in keyboard input is removed. Movement is custom. Mouse look stays per frame.
 - Setting `camera.position` inside `onBeforeRenderObservable` applies in the same frame.
 - Importing from the `@babylonjs/core` barrel gives a 5.2 MB bundle, 1.19 MB gzipped. Vite warns about chunk size. Left as is.
 
@@ -81,24 +85,44 @@ Confirmed this way: rendering, walk, jump, fly, chunk streaming, break, place, h
 
 Not confirmed in a real browser: real pointer lock, wheel on a real mouse, sprint, Shift+N.
 
-## Open input issues
+## Loop and input
 
-Reported by the user: left hold deletes continuously, right hold does not, and block switching interferes with right click and scroll.
+Applied in `src/main.ts` after the user reported bad scroll, uneven holds, and asked for world updates separate from drawing.
 
-Findings:
+Loop:
 
-1. Left hold breaks one block every 180 ms. Intentional.
-2. Right hold repeats too. Each new block becomes the next target, so the stack walks toward the player. It stops when the next cell would overlap the body. Right click at the same aim then does nothing.
-3. A second button pressed during a hold is ignored. See the `pointermove` fact above.
-4. Every wheel event moves one slot whatever its size. Five events of deltaY 4 moved five slots.
+- `tick()` is one world update at a fixed `STEP` of 1/60 s: move, aim, break or place.
+- The frame callback adds real time to `lag`, runs `tick()` while `lag >= STEP`, then blends the camera between the last two body positions by `lag / STEP`.
+- `MAX_STEPS` caps catch-up at a quarter second per frame.
+- Chunk building runs once per drawn frame at most, and only when a tick is due. Inside `tick()` it made slow machines slower, because each catch-up tick built a chunk.
+- Babylon's `deterministicLockstep` engine option exists and works as documented. Not used. Its leftover time is private, so the camera could not blend, and it would make Babylon's own animations step at 60 Hz.
 
-Proposed, awaiting the user's answer:
+Input, all through Babylon observables:
 
-1. Right click places one block per click. Left hold keeps repeating.
-2. Derive the held button from `e.buttons` on `pointerdown`, `pointermove` and `pointerup`.
-3. Accumulate wheel delta and move one slot per notch. Assumes the user's mouse sends small steps.
+- `scene.onKeyboardObservable` gives `event.code`. Keys attach to the canvas, so `canvas.focus()` runs at start.
+- `scene.onPointerObservable` fires `POINTERDOWN` and `POINTERUP` per button, including a second button during a hold. `event.buttons` on release says what is still held.
+- `POINTERWHEEL` fires once per axis. `event.inputIndex` says which axis.
+- Babylon's blur events carry `keyCode` but no `code`. Held keys and buttons are cleared in `engine.onCanvasBlurObservable`.
+- `scene.preventDefaultOnPointerDown` is what cancels `mousedown`. It also focuses the canvas on click.
+- `normalize-wheel-es`: its `spinY` falls back to a full notch for small steps. Use `pixelY` and count one slot per `NOTCH` of 100 pixels.
+- `contextmenu` and `resize` are the only raw DOM listeners left.
 
-Unknown: which of these the user meant by "interferes".
+Unchanged: right hold still repeats. Each new block becomes the next target, so the stack walks toward the player and stops when the next cell would overlap the body.
+
+Test results in headless Chrome, seed `6b0h3zeb`:
+
+- F toggles fly before any click.
+- Wheel: +100 moves one slot, five steps of 4 move none, twenty more move one.
+- Right hold 1 s places 4. Left hold 0.6 s breaks 4. Left pressed during a right hold breaks, and placing resumes on release.
+- Flying covers 32 blocks in 2 s at 60, 40, 20 and 17 fps.
+- Blurring the canvas with W held stops movement.
+
+Test method additions:
+
+- Fixed seed: open the page, write `{ seed, edits: new Map(), look: [0, 0], fly: false, slot: 0 }` to the save, reload.
+- Slow machine: CDP `Emulation.setCPUThrottlingRate`.
+- A `Map` does not survive `page.evaluate`. Reduce it to arrays inside the page.
+- Not testable here: a 144 Hz display, a real smooth wheel, real pointer lock.
 
 ## In the spec but not in the demo
 
@@ -113,7 +137,7 @@ Unknown: which of these the user meant by "interferes".
 
 All from recall. Check against current docs before use.
 
-- Step 4: bake corner ambient occlusion in the mesher as vertex colour. Babylon candidates: `CascadedShadowGenerator`, `DefaultRenderingPipeline` for bloom and tone mapping, `GlowLayer` for lamps and ores, `ParticleSystem` for break particles.
+- Step 4: see `RESEARCH.md`. It replaces the recall list that stood here, with source-checked APIs for shadows, bloom, glow, particles, textures, corner shading, sky, water and clouds.
 - Step 7: `zzfx` for generated sound effects.
 
 ## Parallel work
