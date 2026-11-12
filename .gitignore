@@ -3,3 +3,5 @@ dist/
 .ccw-cache/
 .idea/
 *.local
+test-results/
+playwright-report/
