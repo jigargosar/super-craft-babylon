@@ -17,7 +17,7 @@ These apply to every session in this project.
 
 | Role | Session name | Last seen ref | Does | Owns |
 | --- | --- | --- | --- | --- |
-| executor | `esecutor` | f8734c | Builds the game, wires modules together, runs the dev server | `src/main.ts`, `src/world.ts`, `index.html`, `CLAUDE.md`, `NOTES.md` |
+| executor | `executor` | f8734c | Builds the game, wires modules together, runs the dev server | `src/main.ts`, `src/world.ts`, `index.html`, `CLAUDE.md`, `NOTES.md` |
 | researcher | `researcher` | 91feae | Checks docs and library source, writes new modules agreed with the executor | `RESEARCH.md`, `src/atlas.ts`, `src/sky.ts`, `src/debug.ts`, texture fields in `src/blocks.ts` |
 | tester | `tester` | 0fb742 | Writes and runs automated tests, reports failures to the owner of the code | `e2e/`, `src/*.test.ts`, `playwright.config.ts`, `vitest.config.ts` |
 
