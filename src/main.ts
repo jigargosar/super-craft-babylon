@@ -34,7 +34,7 @@ const SAVE_EVERY = 2000; // milliseconds
 const HALF = 0.3; // half width
 const TALL = 1.8;
 const EYE = 1.62; // eye height above the feet
-const REACH = 6;
+const REACHES = [4, 6, 8, 10]; // how far the player can break and place
 
 // Motion, in blocks per second.
 const WALK = 4.5;
@@ -48,6 +48,9 @@ const GRAVITY = 30; // blocks per second squared
 // Input.
 const LOOK = 500; // mouse pixels per radian
 const NOTCH = 100; // wheel pixels per hotbar slot
+const LEADER = "Backquote"; // press it, then a tuning key
+const TUNE_SHOWN = 1500; // milliseconds the tuning panel stays after a change
+const GHOST_ALPHA = 0.35;
 
 const saved = await get<Save>("world");
 const seed = saved?.seed ?? Math.random().toString(36).slice(2, 10);
@@ -56,6 +59,7 @@ const edits: Edits = saved?.edits ?? new Map();
 const canvas = document.querySelector<HTMLCanvasElement>("#game")!;
 const debug = document.querySelector("#debug")!;
 const hotbar = document.querySelector("#hotbar")!;
+const tune = document.querySelector<HTMLElement>("#tune")!;
 
 const engine = new Engine(canvas, true);
 const scene = new Scene(engine);
@@ -112,7 +116,24 @@ highlight.enableEdgesRendering();
 highlight.edgesWidth = 3;
 highlight.edgesColor = new Color4(0, 0, 0, 0.8);
 
+// Preview of the block a right click would place.
+const ghostMaterial = Object.assign(new StandardMaterial("ghost", scene), { alpha: GHOST_ALPHA, specularColor: Color3.Black() });
+const ghost = MeshBuilder.CreateBox("ghost", { size: 1 }, scene);
+ghost.material = ghostMaterial;
+ghost.isPickable = false;
+
+// Feel settings, switched in play with the leader key so choices are made by playing.
+const tuning = { breakRepeats: true, placeRepeats: true, reach: REACHES[1] };
+const tuningKeys: Record<string, () => void> = {
+  KeyB: () => (tuning.breakRepeats = !tuning.breakRepeats),
+  KeyP: () => (tuning.placeRepeats = !tuning.placeRepeats),
+  KeyR: () => (tuning.reach = REACHES[(REACHES.indexOf(tuning.reach) + 1) % REACHES.length]),
+};
+
 const keys = new Set<string>();
+let leading = false;
+let tuneTimer = 0;
+let canPlace = false;
 let fly = saved?.fly ?? false;
 let slot = saved?.slot ?? 0;
 let held = -1;
@@ -138,8 +159,22 @@ for (const [i, block] of HOTBAR.entries()) {
 function select(next: number) {
   slot = next;
   [...hotbar.children].forEach((el, i) => el.toggleAttribute("data-on", i === slot));
+  ghostMaterial.diffuseColor = Color3.FromHexString(BLOCKS[HOTBAR[slot]].color);
 }
 select(slot);
+
+// Shows the tuning keys and their current values. Stays while the leader is pending, then fades out.
+function showTuning(pending: boolean) {
+  const mode = (repeats: boolean) => (repeats ? "repeat on hold" : "one per click");
+  tune.textContent = [
+    `B  break  ${mode(tuning.breakRepeats)}`,
+    `P  place  ${mode(tuning.placeRepeats)}`,
+    `R  reach  ${tuning.reach} blocks`,
+  ].join("\n");
+  tune.hidden = false;
+  clearTimeout(tuneTimer);
+  if (!pending) tuneTimer = setTimeout(() => (tune.hidden = true), TUNE_SHOWN);
+}
 
 const autosave = setInterval(() => {
   const save: Save = { seed, edits, feet: feet(), look: [camera.rotation.x, camera.rotation.y], fly, slot };
@@ -151,6 +186,11 @@ scene.onKeyboardObservable.add(({ type, event }) => {
   if (type === KeyboardEventTypes.KEYUP) return void keys.delete(event.code);
   if (keys.has(event.code)) return;
   keys.add(event.code);
+  if (leading || event.code === LEADER) {
+    if (leading) tuningKeys[event.code]?.();
+    leading = !leading;
+    return showTuning(leading);
+  }
   if (event.code === "KeyF") fly = !fly;
   if (/^Digit[1-9]$/.test(event.code)) select(Number(event.code[5]) - 1);
   if (event.code === "KeyN" && event.shiftKey) {
@@ -216,20 +256,25 @@ function aim() {
   const normal: number[] = [];
   const [x, y, z] = feet();
   const direction = camera.getDirection(Vector3.Forward()).asArray();
-  const hit = raycast(blocked, [x, y + EYE, z], direction, REACH, point, normal);
+  const hit = raycast(blocked, [x, y + EYE, z], direction, tuning.reach, point, normal);
   target = hit ? point.map((p, i) => Math.floor(p - normal[i] / 2)) : null;
+  canPlace = false;
+  if (target) {
+    place = target.map((t, i) => t + normal[i]);
+    canPlace = !place.every((p, i) => p < body.max[i] && p + 1 > body.base[i]);
+    highlight.position.set(target[0] + 0.5, target[1] + 0.5, target[2] + 0.5);
+    ghost.position.set(place[0] + 0.5, place[1] + 0.5, place[2] + 0.5);
+  }
   highlight.setEnabled(!!target);
-  if (!target) return;
-  place = target.map((t, i) => t + normal[i]);
-  highlight.position.set(target[0] + 0.5, target[1] + 0.5, target[2] + 0.5);
+  ghost.setEnabled(canPlace);
 }
 
 function act() {
   if (held < 0 || !target || ticks < nextAct) return;
-  nextAct = ticks + REPEAT;
-  const insideBody = place.every((p, i) => p < body.max[i] && p + 1 > body.base[i]);
+  const repeats = held === 0 ? tuning.breakRepeats : tuning.placeRepeats;
+  nextAct = repeats ? ticks + REPEAT : Infinity;
   if (held === 0) world.set(target, B.air);
-  if (held === 2 && !insideBody) world.set(place, HOTBAR[slot]);
+  if (held === 2 && canPlace) world.set(place, HOTBAR[slot]);
 }
 
 // One world update. Runs at a fixed rate.
