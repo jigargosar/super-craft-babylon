@@ -16,7 +16,7 @@ Critical: Code stays small by switching on engine features and using libraries.
 - One data table each for blocks, items, recipes and creatures. Adding content means adding a row.
 - No line cap. Fewest moving parts that deliver the feature.
 - Original names, creatures, art and sounds. Nothing copied from an existing game.
-- No asset files. Colours, sounds and creature models are generated in code.
+- No asset files. Textures, sounds and creature models are generated in code.
 - Errors crash loudly.
 
 ## Stack
@@ -42,7 +42,7 @@ Critical: Code stays small by switching on engine features and using libraries.
 ## Blocks
 
 - About 16 types: grass, dirt, stone, sand, snow, log, leaves, planks, brick, glass, water, lamp, workbench, three ores.
-- Each row holds colour, hardness, drop, transparency and light emission.
+- Each row holds texture, hardness, drop, transparency and light emission.
 
 ## Player
 
@@ -53,7 +53,8 @@ Critical: Code stays small by switching on engine features and using libraries.
 
 ## Survival-lite
 
-- Health only. Damage from falls, drowning and hostile creatures. Slow regeneration.
+- Health. Damage from falls, drowning and hostile creatures. Slow regeneration.
+- Hunger is added last in this step.
 - Break time depends on block hardness and the held tool.
 - Tool tiers: hand, wood, stone, metal.
 - Broken blocks go straight into the inventory. No dropped item entities.
@@ -71,7 +72,7 @@ Critical: Code stays small by switching on engine features and using libraries.
 
 ## Visuals
 
-Art direction: flat-coloured blocks with slight per-block tint variation, soft corner shading, warm sun and deep fog. No pixel textures.
+Art direction: textured blocks with slight per-block tint variation, soft corner shading, warm sun and deep fog. Textures are generated in code.
 
 - Day-night cycle with sun, moon, stars and a sky gradient.
 - Sun shadows.
@@ -93,13 +94,18 @@ Art direction: flat-coloured blocks with slight per-block tint variation, soft c
 
 ## HUD
 
-Crosshair, hotbar, health bar, inventory and crafting panel, mode badge, debug overlay with FPS, position and chunk count.
+- Crosshair, hotbar, health bar, inventory and crafting panel, mode badge.
+- Translucent debug panel with FPS, position and chunk count.
+- Translucent shortcut panel that lists every shortcut, grouped by purpose.
+- `?` toggles both panels.
 
 ## Saving
 
 - Seed, chunk diffs, player state and inventory live in IndexedDB.
 - Autosave.
-- One control starts a new world.
+- One shortcut starts a new world.
+- One shortcut downloads the save as a file. One shortcut loads a save file.
+- No buttons. Every action is a shortcut shown in the shortcut panel.
 
 ## Platform
 
@@ -107,7 +113,7 @@ Desktop browser, keyboard and mouse.
 
 ## Out of scope
 
-Multiplayer, touch, gamepad, hunger, farming, shaped crafting grid, dropped item entities, wiring or logic blocks, extra dimensions, texture packs, menus.
+Multiplayer, touch, gamepad, farming, shaped crafting grid, dropped item entities, wiring or logic blocks, extra dimensions, texture packs, menus.
 
 ## Build order
 
@@ -115,7 +121,7 @@ Multiplayer, touch, gamepad, hunger, farming, shaped crafting grid, dropped item
 2. Break, place, hotbar.
 3. Endless chunks, biomes, caves, trees, saving.
 4. Visuals pass.
-5. Survival layer: health, mining time, inventory, crafting, tools.
+5. Survival layer: health, mining time, inventory, crafting, tools, then hunger.
 6. Creatures.
 7. Audio and feel pass.
 
@@ -123,10 +129,10 @@ Each step ends playable.
 Creative mode exists from step 1, so every later feature is testable there.
 
 ## Clarified assumptions
-- Texture.
-- Hunger later.
+- Textures generated in code.
+- Hunger at the end of step 5.
 - Broken blocks go straight to the inventory.
 - Recipe list instead of a crafting grid.
 - Inventory kept on death.
 - Desktop only.
-- Local save in the browser. with save option to download.
+- Local save in the browser. Download and load by shortcut.
