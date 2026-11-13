@@ -84,9 +84,6 @@ const CLOUD_DRIFT = 1.5; // blocks per second
 
 // Input.
 const LOOK = 500; // mouse pixels per radian
-const PITCH_LIMIT = Math.PI / 2; // radians up or down from level
-const SPIKE_PX = 300; // one mouse event moving more than this is dropped when the spike filter is on. A guess, tune in play.
-const PEAK_WINDOW_MS = 1000; // the debug panel shows the largest mouse event over this span
 // The number in `event.button` for a mouse button, to its flag in `event.buttons`.
 const BUTTON_BIT = new Map([
   [0, 1], // left
@@ -143,10 +140,9 @@ camera.minZ = 0.05;
 camera.maxZ = VIEW_FAR;
 camera.fov = 1.2;
 camera.inertia = 0;
+camera.angularSensibility = LOOK;
 camera.rotation.set(saved?.look[0] ?? 0, saved?.look[1] ?? 0, 0);
-// Movement and mouse look are handled here, so each mouse event can be filtered.
 camera.inputs.removeByType("FreeCameraKeyboardMoveInput");
-camera.inputs.removeByType("FreeCameraMouseInput");
 camera.attachControl(true);
 
 const highlight = MeshBuilder.CreateBox("highlight", { size: 1.004 }, scene);
@@ -245,13 +241,6 @@ let grounded = false;
 let target: number[] | null = null;
 let place: number[] = [];
 let before = feet();
-let rawMouse = false; // pointer lock without OS mouse acceleration
-let rawUnsupported = false; // the browser refused raw mouse
-let dropSpikes = false;
-let dropped = 0; // mouse events dropped as spikes
-let peakPx = 0; // largest mouse event in the current window
-let shownPeakPx = 0; // largest mouse event in the last full window
-let peakSince = performance.now();
 
 for (const [i, block] of HOTBAR.entries()) {
   const el = document.createElement("div");
@@ -288,8 +277,6 @@ function showPanels() {
   const settingRows = [
     ["F", "Movement", marked(["WALK", "FLY"], fly ? "FLY" : "WALK")],
     ["T", "Time", marked(TIMES, TIMES[shownTime])],
-    ["R", "Raw mouse", marked(["OFF", "ON"], rawMouse ? "ON" : "OFF") + (rawUnsupported ? "  unsupported here" : "")],
-    ["J", "Drop spikes", marked(["OFF", "ON"], dropSpikes ? "ON" : "OFF")],
   ];
   const moveRows = fly ? [["Space", "rise"], ["Shift", "sink"]] : [["Space", "jump"], ["Shift", "sprint"]];
   const mouseRows = locked ? [["LMB", "break"], ["RMB", "place"], ["Esc", "release mouse"]] : [["Click", "capture mouse"]];
@@ -314,13 +301,6 @@ scene.onKeyboardObservable.add(({ type, event }) => {
   if (event.code === "KeyF") fly = !fly;
   if (event.code === "KeyT") dayFraction = ((timeIndex() + 1) % TIMES.length) / TIMES.length;
   if (event.code === "KeyI") void toggleInspector(scene);
-  if (event.code === "KeyJ") dropSpikes = !dropSpikes;
-  if (event.code === "KeyR") {
-    // The lock mode is fixed when the lock is taken, so the next click captures with the new setting.
-    rawMouse = !rawMouse;
-    rawUnsupported = false;
-    document.exitPointerLock();
-  }
   if (/^Digit[1-9]$/.test(event.code)) select(Number(event.code[5]) - 1);
   if (event.code === "KeyN" && event.shiftKey) {
     clearInterval(autosave);
@@ -329,34 +309,9 @@ scene.onKeyboardObservable.add(({ type, event }) => {
   showPanels();
 });
 
-// Takes the pointer lock. A browser without raw mouse falls back to a plain lock and says so in the panel.
-async function capture() {
-  try {
-    await canvas.requestPointerLock({ unadjustedMovement: rawMouse });
-  } catch (error) {
-    if (!(rawMouse && error instanceof DOMException && error.name === "NotSupportedError")) throw error;
-    rawUnsupported = true;
-    showPanels();
-    await canvas.requestPointerLock();
-  }
-}
-
-// Mouse look. Each event turns the camera at once, so the next frame shows it.
-function look(dx: number, dy: number) {
-  const size = Math.hypot(dx, dy);
-  peakPx = Math.max(peakPx, size);
-  if (dropSpikes && size > SPIKE_PX) return void dropped++;
-  camera.rotation.y += dx / LOOK;
-  camera.rotation.x = Math.min(PITCH_LIMIT, Math.max(-PITCH_LIMIT, camera.rotation.x + dy / LOOK));
-}
-
 scene.onPointerObservable.add(({ type, event }) => {
-  if (type === PointerEventTypes.POINTERMOVE) {
-    if (document.pointerLockElement === canvas) look(event.movementX, event.movementY);
-    return;
-  }
   if (type !== PointerEventTypes.POINTERDOWN) return;
-  if (document.pointerLockElement !== canvas) return void capture();
+  if (document.pointerLockElement !== canvas) return void canvas.requestPointerLock();
   // After a blur during a two-button hold, Babylon reports the release as a press. A real press has its flag set.
   if (event.buttons & (BUTTON_BIT.get(event.button) ?? 0)) presses.push(event.button);
 });
@@ -461,18 +416,12 @@ scene.onBeforeRenderObservable.add(() => {
   Vector3.LerpToRef(Vector3.FromArray(before), Vector3.FromArray(now), lag / STEP, camera.position);
   camera.position.y += EYE;
   const cell = now.map(Math.floor);
-  if (performance.now() - peakSince >= PEAK_WINDOW_MS) {
-    shownPeakPx = peakPx;
-    peakPx = 0;
-    peakSince = performance.now();
-  }
   debug.textContent = [
     `${engine.getFps().toFixed()} fps`,
     `xyz ${cell.join(" ")}`,
     world.column(cell[0], cell[2]).biome,
     `${world.size()} chunks`,
     `seed ${seed}`,
-    `mouse peak ${shownPeakPx.toFixed()} px, ${dropped} spikes dropped`,
     engine.getGlInfo().renderer,
   ].join("\n");
 });
