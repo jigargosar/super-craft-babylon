@@ -422,7 +422,6 @@ scene.onBeforeRenderObservable.add(() => {
     world.column(cell[0], cell[2]).biome,
     `${world.size()} chunks`,
     `seed ${seed}`,
-    engine.getGlInfo().renderer,
   ].join("\n");
 });
 
