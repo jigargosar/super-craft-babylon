@@ -9,15 +9,13 @@
     "preview": "vite preview",
     "typecheck": "tsc",
     "test": "vitest run",
-    "test:e2e": "playwright test",
-    "lag": "node scripts/mouse-lag.mjs"
+    "test:e2e": "playwright test"
   },
   "devDependencies": {
     "@babylonjs/inspector": "^9.35.0",
     "@playwright/test": "^1.65.0",
     "@tailwindcss/vite": "^4.3.5",
     "claude-cli-browser-terminal": "https://github.com/jigargosar/claude-cli-browser-terminal/raw/main/published-versions/claude-cli-browser-terminal-0.1.15.tgz",
-    "puppeteer-core": "^25.17.0",
     "tailwindcss": "^4.3.5",
     "typescript": "^7.0.2",
     "vite": "^8.3.8",
