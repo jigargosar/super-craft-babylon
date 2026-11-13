@@ -12,7 +12,12 @@ import {
   type Scene,
 } from "@babylonjs/core";
 import { GradientMaterial } from "@babylonjs/materials";
+// GradientMaterial loads its shaders lazily, and the first compile ran before they arrived.
+// Babylon then fetched them by URL and got the page HTML. Registering them up front avoids that.
+import "@babylonjs/materials/gradient/gradient.vertex.js";
+import "@babylonjs/materials/gradient/gradient.fragment.js";
 import alea from "alea";
+import { OFF } from "./off";
 
 const DOME_DIAMETER = 380; // blocks. Radius must stay under camera.maxZ.
 const STAR_DISTANCE = 180; // blocks from the camera
@@ -119,6 +124,7 @@ export function createSky(scene: Scene) {
     return daylight;
   };
 
+  if (OFF.has("sky")) for (const mesh of [dome, sunDisc, moonDisc, stars]) mesh.dispose();
   update(0.5);
   return { update, sun };
 }

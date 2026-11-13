@@ -25,6 +25,7 @@ import { createNoise2D } from "simplex-noise";
 import sweep from "voxel-aabb-sweep";
 import { B, BLOCKS, HOTBAR, solid } from "./blocks";
 import { toggleInspector } from "./debug";
+import { OFF } from "./off";
 import { createSky } from "./sky";
 import { createWorld, type Edits } from "./world";
 
@@ -161,17 +162,22 @@ ghost.isPickable = false;
 const shadows = new CascadedShadowGenerator(SHADOW_MAP_PIXELS, sky.sun);
 shadows.shadowMaxZ = scene.fogEnd;
 shadows.numCascades = SHADOW_CASCADES;
-world.hooks.landMesh = (mesh) => shadows.addShadowCaster(mesh, false);
+if (OFF.has("shadows")) shadows.dispose();
+else world.hooks.landMesh = (mesh) => shadows.addShadowCaster(mesh, false);
 
 // Bloom, anti-aliasing and tone mapping.
-const fx = new DefaultRenderingPipeline("fx", true, scene, [camera]);
-fx.bloomEnabled = true;
-fx.fxaaEnabled = true;
-scene.imageProcessingConfiguration.toneMappingEnabled = true;
+const fxOn = !OFF.has("bloom") || !OFF.has("fxaa");
+const fx = fxOn ? new DefaultRenderingPipeline("fx", true, scene, [camera]) : null;
+if (fx) {
+  fx.bloomEnabled = !OFF.has("bloom");
+  fx.fxaaEnabled = !OFF.has("fxaa");
+}
+scene.imageProcessingConfiguration.toneMappingEnabled = !OFF.has("tonemap");
 scene.imageProcessingConfiguration.toneMappingType = ImageProcessingConfiguration.TONEMAPPING_ACES;
 
 // Glow comes only from the land material's emissive texture, which is lit on lamp tiles alone.
 const glow = new GlowLayer("glow", scene);
+if (OFF.has("glow")) glow.dispose();
 glow.customEmissiveColorSelector = (_mesh, _subMesh, material, result) => {
   const level = material === world.land ? 1 : 0;
   result.set(level, level, level, 1);
@@ -195,7 +201,7 @@ Object.assign(chips, {
   minEmitBox: new Vector3(-CHIP_SPREAD, -CHIP_SPREAD, -CHIP_SPREAD),
   maxEmitBox: new Vector3(CHIP_SPREAD, CHIP_SPREAD, CHIP_SPREAD),
 });
-chips.start();
+if (!OFF.has("chips")) chips.start();
 
 // Clouds: one big plane with a blocky alpha texture, above the top of the world.
 // The plane jumps by whole texture repeats to stay over the player, so the pattern never slides.
@@ -416,6 +422,7 @@ scene.onBeforeRenderObservable.add(() => {
     world.column(cell[0], cell[2]).biome,
     `${world.size()} chunks`,
     `seed ${seed}`,
+    engine.getGlInfo().renderer,
   ].join("\n");
 });
 

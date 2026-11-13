@@ -11,6 +11,7 @@ import {
 import { atlasPixels, GRID, TILE, tileUV } from "./atlas";
 import { B, BLOCKS, solid } from "./blocks";
 import { createGenerator, H, index, S } from "./gen";
+import { OFF } from "./off";
 
 export type Edits = Map<string, Map<number, number>>;
 
@@ -68,14 +69,17 @@ export function createWorld(scene: Scene, seed: string, edits: Edits) {
   const { colour, glow } = atlasPixels();
   const atlas = (pixels: Uint8Array) =>
     RawTexture.CreateRGBATexture(pixels, TILE * GRID, TILE * GRID, scene, true, false, Texture.NEAREST_NEAREST_MIPLINEAR);
-  land.diffuseTexture = atlas(colour);
-  land.emissiveTexture = atlas(glow);
+  if (!OFF.has("atlas")) {
+    land.diffuseTexture = atlas(colour);
+    land.emissiveTexture = atlas(glow);
+  }
 
   // Moving grey noise that darkens the water colour. Mirror wrap hides the seam of the noise.
   const ripple = new NoiseProceduralTexture("ripple", RIPPLE_PIXELS, scene);
   Object.assign(ripple, { octaves: 4, persistence: 0.7, brightness: 0.6, animationSpeedFactor: 3 });
   ripple.wrapU = ripple.wrapV = Texture.MIRROR_ADDRESSMODE;
-  water.diffuseTexture = ripple;
+  if (OFF.has("ripple")) ripple.dispose();
+  else water.diffuseTexture = ripple;
   water.backFaceCulling = false;
 
   // Fog ends before the nearest missing chunk can show.
@@ -136,7 +140,7 @@ export function createWorld(scene: Scene, seed: string, edits: Edits) {
             const shut = (d: number[]) => Number(solid(at(x + normal[0] + d[0], y + normal[1] + d[1], z + normal[2] + d[2])));
             // Open neighbours at each corner. Two shut edges hide the corner fully.
             const open = corners.map((corner) => {
-              if (wet) return OPEN;
+              if (wet || OFF.has("corners")) return OPEN;
               const along1 = [0, 0, 0];
               const along2 = [0, 0, 0];
               along1[side1] = corner[side1] * 2 - 1;
