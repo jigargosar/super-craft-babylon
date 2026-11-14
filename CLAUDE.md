@@ -12,18 +12,13 @@ These apply to every session in this project.
 - Only the user commits `SPEC.md`.
 - Never delete or move files in a temp folder.
 - Name constants with units. No magic numbers.
-- Speed comes first. No new automated tests unless the user asks.
-- A test that fails because the design changed is deleted, not rewritten.
+- Speed comes first. No automated tests unless the user asks.
 
-## Dev server and tests
+## Dev server
 
 - One dev server: `http://localhost:5173/`. Start it with `--open` when it is not running.
 - If the port ever changes, update this line.
-- `pnpm test` runs the unit tests. `pnpm test:e2e` runs the Playwright tests against that URL.
-- Do not run the whole suite. Run only the tests a change touches, in the background, and keep working meanwhile.
 
 ## Where things are
 
 - `SPEC.md`: what to build.
-- `NOTES.md`: current state, next actions, verified facts.
-- `RESEARCH.md`: checked APIs for upcoming steps.

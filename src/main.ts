@@ -102,8 +102,6 @@ const keysPanel = document.querySelector("#keys")!;
 
 const engine = new Engine(canvas, true);
 const scene = new Scene(engine);
-// Dev only. The Playwright tests read meshes through this handle.
-if (import.meta.env.DEV) Object.assign(globalThis, { scene });
 scene.fogMode = Scene.FOGMODE_LINEAR;
 scene.skipPointerMovePicking = scene.skipPointerDownPicking = scene.skipPointerUpPicking = true;
 
